@@ -331,6 +331,10 @@ class Config(_ConfigBase):
     capture_headers = _BoolConfigValue("CAPTURE_HEADERS", default=True)
     django_transaction_name_from_route = _BoolConfigValue("DJANGO_TRANSACTION_NAME_FROM_ROUTE", default=False)
     disable_log_record_factory = _BoolConfigValue("DISABLE_LOG_RECORD_FACTORY", default=False)
+    extra_sanitize_field_names = _ListConfigValue("EXTRA_SANITIZE_FIELD_NAMES", default=frozenset(
+        ["authorization", "password", "secret", "passwd", "token", "api_key", "access_token", "sessionid"])
+    )
+    sanitize_value_patterns = _ListConfigValue("SANITIZE_VALUE_PATTERNS", default=[re.compile(r"^[- \d]{16,19}$")])
 
 
 class VersionedConfig(object):

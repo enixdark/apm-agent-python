@@ -70,6 +70,30 @@ def varmap(func, var, context=None, name=None):
     return ret
 
 
+def argsmap(func, var, extra_sanitize_field_names, sanitize_value_patterns, context=None, name=None):
+    """
+    Executes ``func(key_name, value, extra_sanitize_field_names, sanitize_value_patterns)`` with fields and pattern on all values,
+    recursively discovering dict and list scoped
+    values.
+    """
+    if context is None:
+        context = set()
+    objid = id(var)
+    if objid in context:
+        return func(name, "<...>")
+    context.add(objid)
+    if isinstance(var, dict):
+        ret = dict((k, argsmap(func, v, extra_sanitize_field_names, sanitize_value_patterns, context, k))
+                   for k, v in compat.iteritems(var))
+    elif isinstance(var, (list, tuple)):
+        ret = func(name, [argsmap(func, f, extra_sanitize_field_names, sanitize_value_patterns, context, name)
+                          for f in var])
+    else:
+        ret = func(name, var, extra_sanitize_field_names, sanitize_value_patterns)
+    context.remove(objid)
+    return ret
+
+
 def get_name_from_func(func):
     # partials don't have `__module__` or `__name__`, so we use the values from the "inner" function
     if isinstance(func, partial_types):

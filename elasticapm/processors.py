@@ -33,8 +33,9 @@ import re
 import warnings
 
 from elasticapm.conf.constants import ERROR, MASK, SPAN, TRANSACTION
-from elasticapm.utils import compat, varmap
+from elasticapm.utils import compat, argsmap
 from elasticapm.utils.encoding import force_text
+
 
 SANITIZE_FIELD_NAMES = frozenset(
     ["authorization", "password", "secret", "passwd", "token", "api_key", "access_token", "sessionid"]
@@ -81,7 +82,7 @@ def remove_stacktrace_locals(client, event):
     :param event: a transaction or error event
     :return: The modified event
     """
-    func = lambda frame: frame.pop("vars", None)
+    def func(frame): return frame.pop("vars", None)
     return _process_stack_frames(event, func)
 
 
@@ -94,10 +95,15 @@ def sanitize_stacktrace_locals(client, event):
     :param event: a transaction or error event
     :return: The modified event
     """
+    c1 = client
 
     def func(frame):
         if "vars" in frame:
-            frame["vars"] = varmap(_sanitize, frame["vars"])
+            frame["vars"] = argsmap(
+                _sanitize, frame["vars"],
+                client.config.extra_sanitize_field_names,
+                client.config.sanitize_value_patterns
+            )
 
     return _process_stack_frames(event, func)
 
@@ -115,14 +121,22 @@ def sanitize_http_request_cookies(client, event):
     # sanitize request.cookies dict
     try:
         cookies = event["context"]["request"]["cookies"]
-        event["context"]["request"]["cookies"] = varmap(_sanitize, cookies)
+        event["context"]["request"]["cookies"] = argsmap(
+            _sanitize, cookies,
+            client.config.extra_sanitize_field_names,
+            client.config.sanitize_value_patterns
+        )
     except (KeyError, TypeError):
         pass
 
     # sanitize request.header.cookie string
     try:
         cookie_string = event["context"]["request"]["headers"]["cookie"]
-        event["context"]["request"]["headers"]["cookie"] = _sanitize_string(cookie_string, "; ", "=")
+        event["context"]["request"]["headers"]["cookie"] = _sanitize_string(
+            cookie_string, "; ", "=",
+            client.config.extra_sanitize_field_names,
+            client.config.sanitize_value_patterns
+        )
     except (KeyError, TypeError):
         pass
     return event
@@ -138,7 +152,11 @@ def sanitize_http_response_cookies(client, event):
     """
     try:
         cookie_string = event["context"]["response"]["headers"]["set-cookie"]
-        event["context"]["response"]["headers"]["set-cookie"] = _sanitize_string(cookie_string, ";", "=")
+        event["context"]["response"]["headers"]["set-cookie"] = _sanitize_string(
+            cookie_string, ";", "=",
+            client.config.extra_sanitize_field_names,
+            client.config.sanitize_value_patterns
+        )
     except (KeyError, TypeError):
         pass
     return event
@@ -156,14 +174,22 @@ def sanitize_http_headers(client, event):
     # request headers
     try:
         headers = event["context"]["request"]["headers"]
-        event["context"]["request"]["headers"] = varmap(_sanitize, headers)
+        event["context"]["request"]["headers"] = argsmap(
+            _sanitize, headers,
+            client.config.extra_sanitize_field_names,
+            client.config.sanitize_value_patterns
+        )
     except (KeyError, TypeError):
         pass
 
     # response headers
     try:
         headers = event["context"]["response"]["headers"]
-        event["context"]["response"]["headers"] = varmap(_sanitize, headers)
+        event["context"]["response"]["headers"] = argsmap(
+            _sanitize, headers,
+            client.config.extra_sanitize_field_names,
+            client.config.sanitize_value_patterns
+        )
     except (KeyError, TypeError):
         pass
 
@@ -181,7 +207,11 @@ def sanitize_http_wsgi_env(client, event):
     """
     try:
         env = event["context"]["request"]["env"]
-        event["context"]["request"]["env"] = varmap(_sanitize, env)
+        event["context"]["request"]["env"] = argsmap(
+            _sanitize, env,
+            client.config.extra_sanitize_field_names,
+            client.config.sanitize_value_patterns
+        )
     except (KeyError, TypeError):
         pass
     return event
@@ -201,7 +231,11 @@ def sanitize_http_request_querystring(client, event):
     except (KeyError, TypeError):
         return event
     if "=" in query_string:
-        sanitized_query_string = _sanitize_string(query_string, "&", "=")
+        sanitized_query_string = _sanitize_string(
+            query_string, "&", "=",
+            client.config.extra_sanitize_field_names,
+            client.config.sanitize_value_patterns
+        )
         full_url = event["context"]["request"]["url"]["full"]
         event["context"]["request"]["url"]["search"] = sanitized_query_string
         event["context"]["request"]["url"]["full"] = full_url.replace(query_string, sanitized_query_string)
@@ -224,7 +258,11 @@ def sanitize_http_request_body(client, event):
     except (KeyError, TypeError):
         return event
     if "=" in body:
-        sanitized_query_string = _sanitize_string(body, "&", "=")
+        sanitized_query_string = _sanitize_string(
+            body, "&", "=",
+            client.config.extra_sanitize_field_names,
+            client.config.sanitize_value_patterns
+        )
         event["context"]["request"]["body"] = sanitized_query_string
     return event
 
@@ -238,25 +276,25 @@ def mark_in_app_frames(client, event):
     return event
 
 
-def _sanitize(key, value):
+def _sanitize(key, value, sanitize_field_names=[], sanitize_value_patterns=[]):
     if value is None:
         return
 
-    if isinstance(value, compat.string_types) and any(pattern.match(value) for pattern in SANITIZE_VALUE_PATTERNS):
+    if isinstance(value, compat.string_types) and any(pattern.match(value) for pattern in sanitize_value_patterns):
         return MASK
 
     if not key:  # key can be a NoneType
         return value
 
     key = key.lower()
-    for field in SANITIZE_FIELD_NAMES:
+    for field in sanitize_field_names:
         if field in key:
             # store mask as a fixed length for security
             return MASK
     return value
 
 
-def _sanitize_string(unsanitized, itemsep, kvsep):
+def _sanitize_string(unsanitized, itemsep, kvsep, sanitize_field_names=[], sanitize_value_patterns=[]):
     """
     sanitizes a string that contains multiple key/value items
     :param unsanitized: the unsanitized string
@@ -269,7 +307,7 @@ def _sanitize_string(unsanitized, itemsep, kvsep):
     for kv in kvs:
         kv = kv.split(kvsep)
         if len(kv) == 2:
-            sanitized.append((kv[0], _sanitize(kv[0], kv[1])))
+            sanitized.append((kv[0], _sanitize(kv[0], kv[1], sanitize_field_names, sanitize_value_patterns)))
         else:
             sanitized.append(kv)
     return itemsep.join(kvsep.join(kv) for kv in sanitized)
