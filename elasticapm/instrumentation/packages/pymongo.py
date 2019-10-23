@@ -91,10 +91,10 @@ class PyMongoBulkInstrumentation(AbstractInstrumentedModule):
 class PyMongoCursorInstrumentation(AbstractInstrumentedModule):
     name = "pymongo"
 
-    instrument_list = [("pymongo.cursor", "Cursor._refresh")]
+    instrument_list = [("pymongo.cursor", "Cursor.next")]
 
     def call(self, module, method, wrapped, instance, args, kwargs):
         collection = instance.collection
-        signature = ".".join([collection.full_name, "cursor.refresh"])
+        signature = ".".join([collection.full_name, "cursor.next"])
         with capture_span(signature, span_type="db", span_subtype="mongodb", span_action="query"):
             return wrapped(*args, **kwargs)
