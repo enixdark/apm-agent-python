@@ -97,14 +97,14 @@ def sanitize_stacktrace_locals(client, event):
     :param event: a transaction or error event
     :return: The modified event
     """
-    c1 = client
+    c = client
 
     def func(frame):
         if "vars" in frame:
             frame["vars"] = argsmap(
                 _sanitize, frame["vars"],
-                client.config.extra_sanitize_field_names,
-                client.config.sanitize_value_patterns
+                c.client.config.extra_sanitize_field_names,
+                c.client.config.sanitize_value_patterns
             )
 
     return _process_stack_frames(event, func)
@@ -121,12 +121,14 @@ def sanitize_http_request_cookies(client, event):
     """
 
     # sanitize request.cookies dict
+    c = client
+
     try:
         cookies = event["context"]["request"]["cookies"]
         event["context"]["request"]["cookies"] = argsmap(
             _sanitize, cookies,
-            client.config.extra_sanitize_field_names,
-            client.config.sanitize_value_patterns
+            c.client.config.extra_sanitize_field_names,
+            c.client.config.sanitize_value_patterns
         )
     except (KeyError, TypeError):
         pass
@@ -136,8 +138,8 @@ def sanitize_http_request_cookies(client, event):
         cookie_string = event["context"]["request"]["headers"]["cookie"]
         event["context"]["request"]["headers"]["cookie"] = _sanitize_string(
             cookie_string, "; ", "=",
-            client.config.extra_sanitize_field_names,
-            client.config.sanitize_value_patterns
+            c.client.config.extra_sanitize_field_names,
+            c.client.config.sanitize_value_patterns
         )
     except (KeyError, TypeError):
         pass
@@ -152,12 +154,13 @@ def sanitize_http_response_cookies(client, event):
     :param event: a transaction or error event
     :return: The modified event
     """
+    c = client
     try:
         cookie_string = event["context"]["response"]["headers"]["set-cookie"]
         event["context"]["response"]["headers"]["set-cookie"] = _sanitize_string(
             cookie_string, ";", "=",
-            client.config.extra_sanitize_field_names,
-            client.config.sanitize_value_patterns
+            c.client.config.extra_sanitize_field_names,
+            c.client.config.sanitize_value_patterns
         )
     except (KeyError, TypeError):
         pass
@@ -174,12 +177,13 @@ def sanitize_http_headers(client, event):
     :return: The modified event
     """
     # request headers
+    c = client
     try:
         headers = event["context"]["request"]["headers"]
         event["context"]["request"]["headers"] = argsmap(
             _sanitize, headers,
-            client.config.extra_sanitize_field_names,
-            client.config.sanitize_value_patterns
+            c.client.config.extra_sanitize_field_names,
+            c.client.config.sanitize_value_patterns
         )
     except (KeyError, TypeError):
         pass
@@ -189,8 +193,8 @@ def sanitize_http_headers(client, event):
         headers = event["context"]["response"]["headers"]
         event["context"]["response"]["headers"] = argsmap(
             _sanitize, headers,
-            client.config.extra_sanitize_field_names,
-            client.config.sanitize_value_patterns
+            c.client.config.extra_sanitize_field_names,
+            c.client.config.sanitize_value_patterns
         )
     except (KeyError, TypeError):
         pass
@@ -207,12 +211,14 @@ def sanitize_http_wsgi_env(client, event):
     :param event: a transaction or error event
     :return: The modified event
     """
+    c = client
+
     try:
         env = event["context"]["request"]["env"]
         event["context"]["request"]["env"] = argsmap(
             _sanitize, env,
-            client.config.extra_sanitize_field_names,
-            client.config.sanitize_value_patterns
+            c.client.config.extra_sanitize_field_names,
+            c.client.config.sanitize_value_patterns
         )
     except (KeyError, TypeError):
         pass
@@ -228,6 +234,7 @@ def sanitize_http_request_querystring(client, event):
     :param event: a transaction or error event
     :return: The modified event
     """
+    c = client
     try:
         query_string = force_text(event["context"]["request"]["url"]["search"], errors="replace")
     except (KeyError, TypeError):
@@ -235,8 +242,8 @@ def sanitize_http_request_querystring(client, event):
     if "=" in query_string:
         sanitized_query_string = _sanitize_string(
             query_string, "&", "=",
-            client.config.extra_sanitize_field_names,
-            client.config.sanitize_value_patterns
+            c.client.config.extra_sanitize_field_names,
+            c.client.config.sanitize_value_patterns
         )
         full_url = event["context"]["request"]["url"]["full"]
         event["context"]["request"]["url"]["search"] = sanitized_query_string
@@ -255,6 +262,7 @@ def sanitize_http_request_body(client, event):
     :param event: a transaction or error event
     :return: The modified event
     """
+    c = client
     try:
         body = force_text(event["context"]["request"]["body"], errors="replace")
     except (KeyError, TypeError):
@@ -262,8 +270,8 @@ def sanitize_http_request_body(client, event):
     if "=" in body:
         sanitized_query_string = _sanitize_string(
             body, "&", "=",
-            client.config.extra_sanitize_field_names,
-            client.config.sanitize_value_patterns
+            c.client.config.extra_sanitize_field_names,
+            c.client.config.sanitize_value_patterns
         )
         event["context"]["request"]["body"] = sanitized_query_string
     return event
